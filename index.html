@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saved conversations</title>
+<style>body{font:18px system-ui;max-width:50rem;margin:2rem auto;padding:0 1rem}input,button,select{font:inherit;padding:.4rem;max-width:100%;box-sizing:border-box}form{margin:1rem 0;display:flex;gap:.5rem;flex-wrap:wrap}li{margin:.7rem 0;white-space:pre-wrap}#status{color:#a00}button{cursor:pointer}</style></head>
+<body><h1>Saved conversations</h1>
+<p>Create a conversation, send a few messages, then come back to it later.</p>
+<form id="create"><input id="title" placeholder="Conversation title" aria-label="Conversation title" required><button>Create</button></form>
+<label>Conversation <select id="conversations"><option value="">Choose a conversation</option></select></label>
+<ul id="messages"></ul>
+<form id="send"><input id="message" placeholder="Your message" aria-label="Your message" required><button>Send</button></form>
+<h2>Search saved messages</h2><form id="search"><input id="term" placeholder="Search text" aria-label="Search text"><button>Search</button></form><ul id="results"></ul>
+<p id="status" role="status"></p>
+<script>
+const el = id => document.getElementById(id);
+async function api(path, data) {
+  const response = await fetch(path, data === undefined ? {} : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  if (!response.ok) {
+    let detail;
+    try { detail = (await response.json()).detail; } catch (_) {}
+    throw new Error(typeof detail === 'string' ? detail : 'Request failed (' + response.status + '). Check the terminal: a database function may still need work.');
+  }
+  return response.json();
+}
+function show(id, rows, format) {
+  el(id).replaceChildren();
+  for (const row of rows) {const li=document.createElement('li');li.textContent=format(row);el(id).append(li);}
+}
+async function refresh(selected = el('conversations').value) {
+  const rows = await api('/conversations');
+  el('conversations').replaceChildren(new Option('Choose a conversation',''));
+  for (const row of rows) el('conversations').append(new Option(row.title,row.id));
+  el('conversations').value=selected;
+}
+async function history() {
+  const id=el('conversations').value;
+  show('messages',id ? await api('/conversations/'+id+'/messages') : [],r=>r.role+': '+r.content);
+}
+async function run(action) {try {el('status').textContent='';await action();} catch(error) {el('status').textContent=error.message;}}
+el('create').onsubmit=e=>{e.preventDefault();run(async()=>{const row=await api('/conversations',{title:el('title').value});await refresh(row.id);await history();el('title').value='';});};
+el('conversations').onchange=()=>run(history);
+el('send').onsubmit=e=>{e.preventDefault();run(async()=>{const id=el('conversations').value;if(!id)throw new Error('Create or choose a conversation first.');await api('/conversations/'+id+'/messages',{content:el('message').value});el('message').value='';await history();});};
+el('search').onsubmit=e=>{e.preventDefault();run(async()=>show('results',await api('/search?q='+encodeURIComponent(el('term').value)),r=>r.title+' / '+r.role+': '+r.content));};
+run(()=>refresh());
+</script></body></html>
